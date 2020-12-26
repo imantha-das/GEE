@@ -1,3 +1,4 @@
+![](image/ComputeAnomaly.png)
 ## ComputeAnomaly.jl
 
 * Function : computeAnomaly
