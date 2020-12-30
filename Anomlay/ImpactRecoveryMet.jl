@@ -77,8 +77,8 @@ function anomMet(data::DataFrame, idNo::Any, target::String; uniqIdIdx::Int64 = 
         improv_x = max_x[improvIdx]
         improv_y = max_y[improvIdx]
         
-
-        metrics = Dict(
+        # Add the metrics into a dictionary
+        metricsAll = Dict(
                 "precon_x" => min_x,
                 "precon_y" => min_y,
                 "improv_x" => improv_x,
@@ -87,6 +87,17 @@ function anomMet(data::DataFrame, idNo::Any, target::String; uniqIdIdx::Int64 = 
                 "delay_y" => delay_y,
                 "budget" => zeroRts
         )
+
+        metrics = Dict{String,Any}()
+        for (k,v) in metricsAll
+                if !isempty(v)
+                    push!(metrics, k => Array{Any}([v[1]]))
+                else 
+                    push!(metrics, k => Array{Any}([missing]))
+                end
+        end
+
+        push!(metrics, "id" => unique(df.id))  
 
         return df,metrics
 end
@@ -116,7 +127,7 @@ function anomPlot(df::DataFrame,metrics::Dict)
                 ylabel = "CDI"
         )
 
-        if length(metrics["improv_x"]) > 0
+        if !ismissing(metrics["improv_x"][1])
                 p2 = plot!(
                         metrics["improv_x"],
                         metrics["improv_y"],
@@ -126,7 +137,7 @@ function anomPlot(df::DataFrame,metrics::Dict)
                 )
         end
 
-        if length(metrics["precon_x"]) > 0
+        if !ismissing(metrics["precon_x"][1])
                 p2 = plot!(
                         metrics["precon_x"],
                         metrics["precon_y"],
@@ -136,27 +147,27 @@ function anomPlot(df::DataFrame,metrics::Dict)
                 )
         end
 
-        if length(metrics["delay_x"]) > 0
+        if !ismissing(metrics["delay_x"][1])
                 p2 = plot!(
                         metrics["delay_x"],
-                        zeros(length(metrics["delay_x"])),
+                        metrics["delay_y"],
                         linetype = :scatter,
                         marker = (:circle, :fuchsia, 5),
                         label = "delay"
                 )
         end
 
-        if length(metrics["budget"]) > 0
+        if !ismissing(metrics["budget"][1])
                 p2 = plot!(
                         metrics["budget"],
-                        zeros(length(metrics["budget"])),
+                        Array{Int64}([0]),
                         linetype = :scatter,
                         marker = (:circle, :dodgerblue,5),
-                        lable = "budget"
+                        label = "budget"
                 )
         end
 
-        p = plot(p1,p2, layout = (2,1), size = (600,600), legend = :bottomleft)
+        p = plot(p1,p2, layout = (2,1), size = (800,600), legend = :outertopright)
 end
 
 #=
