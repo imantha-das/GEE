@@ -39,9 +39,9 @@
 ## extPhenLite.py - python class
 * To extract phenology metrics
 
-  `from ectPhenLite import ExtPhen`
+  `from extPhenLite import ExtPhen`
   
-  `data = pd.read_csv("path/data.csv)`
+  `data = pd.read_csv("path/data.csv")`
   
   `inst = ExtPhen(data = data, target = "fitted.values", eDate = "2010-10-26")`
   
