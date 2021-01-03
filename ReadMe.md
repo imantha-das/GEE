@@ -1,3 +1,6 @@
+# Impact Recovery Metrics
+![](images/ImpactRecoveryMet_Jl.png)
+
 # Phenology Metrics
 
 ![](images/Phenology_Metrics.png)
