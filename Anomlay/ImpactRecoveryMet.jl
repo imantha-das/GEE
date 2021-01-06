@@ -5,10 +5,15 @@ using Polynomials: fit,derivative,roots
 using CSV
 using Dates
 
+# Function to convert months in floats to Dates : Used for polynomial roots
+function convDateTime(x)
+        fm,m = modf(x)
+        Day(Int(round(30.416 * fm))) + Month(Int(m))
+end
 
 # Function to compute anomaly metrics
 
-function anomMet(data::DataFrame, idNo::Any, target::String; uniqIdIdx::Int64 = 1,timeThresh::Int64 = 12)
+function anomMet(data::DataFrame, idNo::Any, target::String ; uniqIdIdx::Int64 = 1,timeThresh::Int64 = 12)
         if typeof(idNo) == String 
                 ptId = idNo
         else
@@ -25,6 +30,8 @@ function anomMet(data::DataFrame, idNo::Any, target::String; uniqIdIdx::Int64 = 
 
         df.time = Date.(df.time, dateformat"Y-m-d H:M:S")
         df.id = String.(df.id)
+        # drop missing values
+        dropmissing!(df)
         df.target = Float64.(df.target)
 
         rename!(df, Array{String}(["id","time", target]))
@@ -67,6 +74,18 @@ function anomMet(data::DataFrame, idNo::Any, target::String; uniqIdIdx::Int64 = 
         min_y = polyEq.(min_x)
         max_y = polyEq.(max_x)
 
+        #Filter out precondition points : Precondition points must be negative
+        minIdx = findall(x -> x < 0, min_y)
+        min_x = min_x[minIdx]
+        min_y = min_y[minIdx]
+
+        #Filter zeroRts : must happen after a minima
+        if isempty(min_x)
+                zeroRts = Array([])
+        else
+                zeroRts = zeroRts[zeroRts .> min_x[1]]
+        end
+
         # Filter delay
         delayIdx = findall(x -> x < timeThresh, max_x)
         delay_x = max_x[delayIdx]
@@ -79,88 +98,107 @@ function anomMet(data::DataFrame, idNo::Any, target::String; uniqIdIdx::Int64 = 
         
         # Add the metrics into a dictionary
         metricsAll = Dict(
-                "precon_x" => min_x,
-                "precon_y" => min_y,
-                "improv_x" => improv_x,
-                "improv_y" => improv_y,
-                "delay_x" => delay_x,
-                "delay_y" => delay_y,
-                "budget" => zeroRts
+                "preconT" => min_x,
+                "preconV" => min_y,
+                "improvDeclT" => improv_x,
+                "improvDeclV" => improv_y,
+                "delayT" => delay_x,
+                "delayV" => delay_y,
+                "budgetT" => zeroRts,
         )
 
         metrics = Dict{String,Any}()
         for (k,v) in metricsAll
                 if !isempty(v)
                     push!(metrics, k => Array{Any}([v[1]]))
+                    if endswith(k,"T")
+                        push!(metrics, k * "S" => Array{Date}([df.time[1] + convDateTime(v[1])]))
+                    end
                 else 
                     push!(metrics, k => Array{Any}([missing]))
+                    if endswith(k,"T")
+                        push!(metrics, k * "S" => Array{Any}([missing]))
+                    end
                 end
         end
 
-        push!(metrics, "id" => unique(df.id))  
+        push!(metrics, "id" => unique(df.id))
+        push!(metrics, "time" => df.time)
+        push!(metrics, "monthsSinceErup" => x)
+        push!(metrics, "targetName" => target)
+        push!(metrics, "target" => df[:,3])  
+        push!(metrics, "fit" => df.yhat)
+        push!(metrics, "ployEq" => Array([polyEq]))
+        push!(metrics, "polyEqDer1" => Array([polyEq¹]))
+        push!(metrics, "polyEqDer2" => Array([polyEq²]))
+        if !ismissing(metrics["budgetT"][1])
+                push!(metrics, "budgetV" => Array{Float64}([0.0]))
+        else
+                push!(metrics, "budgetV" => Array{Any}([missing]))
+        end
 
-        return df,metrics
+        return metrics
 end
 
 # Function to plot anomaly ---------------------------------------------
 
-function anomPlot(df::DataFrame,metrics::Dict)
+function anomPlot(metrics::Dict)
         theme(:wong)
         gr()
         p1 = plot(
-                df.time,
-                df[:,3],
+                metrics["time"],
+                metrics["target"],
                 line = (:dodgerblue,3),
                 label = "CDI - actual",
                 xlabel = "Date",
                 ylabel = "CDI",
-                title = unique(df.id)[1],
+                title = metrics["id"],
                 titlelocation = :left
         )
 
         p2 = plot(
-                df.months_since_impact,
-                df.yhat,
+                metrics["monthsSinceErup"],
+                metrics["fit"],
                 line = (:slategray,3),
                 label = "CDI - polynomial fit",
                 xlabel = "Months since impact",
                 ylabel = "CDI"
         )
 
-        if !ismissing(metrics["improv_x"][1])
+        if !ismissing(metrics["improvDeclT"][1])
                 p2 = plot!(
-                        metrics["improv_x"],
-                        metrics["improv_y"],
+                        metrics["improvDeclT"],
+                        metrics["improvDeclV"],
                         linetype = :scatter,
                         marker = (:circle,:limegreen, 5),
-                        label = "Improvement"
+                        label = "Improvement decline Pt"
                 )
         end
 
-        if !ismissing(metrics["precon_x"][1])
+        if !ismissing(metrics["preconT"][1])
                 p2 = plot!(
-                        metrics["precon_x"],
-                        metrics["precon_y"],
+                        metrics["preconT"],
+                        metrics["preconV"],
                         linetype = :scatter,
                         marker = (:circle, :coral,5),
                         label = "precondition state"
                 )
         end
 
-        if !ismissing(metrics["delay_x"][1])
+        if !ismissing(metrics["delayT"][1])
                 p2 = plot!(
-                        metrics["delay_x"],
-                        metrics["delay_y"],
+                        metrics["delayT"],
+                        metrics["delayV"],
                         linetype = :scatter,
                         marker = (:circle, :fuchsia, 5),
                         label = "delay"
                 )
         end
 
-        if !ismissing(metrics["budget"][1])
+        if !ismissing(metrics["budgetT"][1])
                 p2 = plot!(
-                        metrics["budget"],
-                        Array{Int64}([0]),
+                        metrics["budgetT"],
+                        metrics["budgetV"],
                         linetype = :scatter,
                         marker = (:circle, :dodgerblue,5),
                         label = "budget"
@@ -170,9 +208,17 @@ function anomPlot(df::DataFrame,metrics::Dict)
         p = plot(p1,p2, layout = (2,1), size = (800,600), legend = :outertopright)
 end
 
+
 #=
-df,met = anomMet(data,NaN, "LSSR.EVI.CDI";uniqIdIdx = 54)
-p = anomPlot(df,met)
+using SQLite
+# Connect to Database
+db = SQLite.DB("D:/GEE_Project/Databases/database.db")
+anomalyM = DataFrame(SQLite.DBInterface.execute(db, "SELECT * FROM anomalyM"))
+
+met = anomMet(anomalyM,NaN, "LSSR.EVI.CDI",;uniqIdIdx = 62)
+met
+p = anomPlot(met)
+
 =#
 
 
