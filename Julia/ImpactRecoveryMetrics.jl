@@ -1,10 +1,15 @@
+module ImpactRecoveryMetrics
+
 using DataFrames
 using Query
-#using Plots
+using Plots
 using Polynomials: fit,derivative,roots
 using CSV
 using Dates
-using Gadfly
+
+
+#To use functions explicitly
+export anomMet,anomPlot 
 
 # Function to convert months in floats to Dates : Used for polynomial roots
 function convDateTime(x)
@@ -13,8 +18,7 @@ function convDateTime(x)
 end
 
 # Function to compute anomaly metrics
-
-function anomMet(data::DataFrame, idNo::Any, target::String ; uniqIdIdx::Int64 = 1,timeThresh::Int64 = 12)
+function anomMet(data::DataFrame, idNo::Any, target::String ; uniqIdIdx::Int64 = 1,timeThresh::Int64 = 12)::Dict
         if typeof(idNo) == String 
                 ptId = idNo
         else
@@ -75,34 +79,43 @@ function anomMet(data::DataFrame, idNo::Any, target::String ; uniqIdIdx::Int64 =
         min_y = polyEq.(min_x)
         max_y = polyEq.(max_x)
 
-        #Filter out precondition points : Precondition points must be negative
+        #Filter out precondition points ---------------------------------------------------------
+        # Rules : ust be on negative side
         minIdx = findall(x -> x < 0, min_y)
-        min_x = min_x[minIdx]
-        min_y = min_y[minIdx]
+        precon_x = min_x[minIdx]
+        precon_y = min_y[minIdx]
 
-        #Filter zeroRts : must happen after a minima
+        #Filter out budget values --------------------------------------------------------------
+        # Rules : Must occure after threshold, must occur after precondition point
         if isempty(min_x)
-                zeroRts = Array([])
+                budget_x = Array([])
         else
-                zeroRts = zeroRts[zeroRts .> min_x[1]]
+                budget_x = zeroRts[zeroRts .> min_x[1]]
         end
 
-        # Filter delay
-        delayIdx = findall(x -> x < timeThresh, max_x)
+        budgetIdx = findall(x -> x > timeThresh, budget_x)
+        budget_x = budget_x[budgetIdx]
+
+        # Filter delay --------------------------------------------------------------------------
+        # Rules : Must occure before time threshold, must be on positive side 
+        delayIdx1 = findall(x -> x < timeThresh, max_x)
+        delayIdx2 = findall(x -> x > 0, max_y)
+        delayIdx = findall(x -> x in delayIdx1, delayIdx2)
         delay_x = max_x[delayIdx]
         delay_y = max_y[delayIdx]
 
-        # Filter Improvement
+        # Filter Improvement decline point ------------------------------------------------------
+        # Rules : Must be after threshold
         improvIdx = findall(x -> x > timeThresh, max_x)
-        improv_x = max_x[improvIdx]
-        improv_y = max_y[improvIdx]
+        improvDecl_x = max_x[improvIdx]
+        improvDecl_y = max_y[improvIdx]
         
         # Add the metrics into a dictionary
         metricsAll = Dict(
-                "preconT" => min_x,
-                "preconV" => min_y,
-                "improvDeclT" => improv_x,
-                "improvDeclV" => improv_y,
+                "preconT" => precon_x,
+                "preconV" => precon_y,
+                "improvDeclT" => improvDecl_x,
+                "improvDeclV" => improvDecl_y,
                 "delayT" => delay_x,
                 "delayV" => delay_y,
                 "budgetT" => zeroRts,
@@ -123,6 +136,13 @@ function anomMet(data::DataFrame, idNo::Any, target::String ; uniqIdIdx::Int64 =
                 end
         end
 
+        if !ismissing(metrics["budgetT"][1])
+                push!(metrics, "budgetV" => Array{Float64}([0.0]))
+        else
+                push!(metrics, "budgetV" => Array{Any}([missing]))
+        end
+
+        
         push!(metrics, "id" => unique(df.id))
         push!(metrics, "time" => df.time)
         push!(metrics, "monthsSinceErup" => x)
@@ -132,11 +152,7 @@ function anomMet(data::DataFrame, idNo::Any, target::String ; uniqIdIdx::Int64 =
         push!(metrics, "ployEq" => Array([polyEq]))
         push!(metrics, "polyEqDer1" => Array([polyEq¹]))
         push!(metrics, "polyEqDer2" => Array([polyEq²]))
-        if !ismissing(metrics["budgetT"][1])
-                push!(metrics, "budgetV" => Array{Float64}([0.0]))
-        else
-                push!(metrics, "budgetV" => Array{Any}([missing]))
-        end
+        
 
         return metrics
 end
@@ -144,7 +160,7 @@ end
 # Function to plot anomaly ---------------------------------------------
 
 function anomPlot(metrics::Dict)
-        theme(:wong)
+        theme(:bright)
         gr()
         p1 = plot(
                 metrics["time"],
@@ -209,90 +225,13 @@ function anomPlot(metrics::Dict)
         p = plot(p1,p2, layout = (2,1), size = (800,600), legend = :outertopright)
 end
 
-function anomPlot2(met::Dict)
-        set_default_plot_size(20cm,18cm)
-        p1 = plot(
-                x = met["time"], 
-                y = met["target"], 
-                Geom.line, 
-                Theme(
-                        line_width = 1mm
-                        ,default_color = colorant"dodgerblue"
-                ),
-                Guide.xlabel("Dates"),
-                Guide.ylabel(met["targetName"]),
-                Guide.title(met["id"][1])
-        )
-
-        p2 = plot(
-                layer(
-                        x = met["monthsSinceErup"],
-                        y = met["fit"],
-                        Geom.line,
-                        style(
-                                line_width = 1mm,
-                                default_color = colorant"slategray"
-                        )
-                ),
-                layer(
-                        x = met["delayT"],
-                        y = met["delayV"],
-                        Geom.point,
-                        style(
-                                point_size = 1.75mm,
-                                default_color = colorant"fuchsia"
-                        )       
-                ),
-                layer(
-                        x = met["preconT"],
-                        y = met["preconV"],
-                        Geom.point,
-                        style(
-                                point_size = 1.75mm,
-                                default_color = colorant"coral"
-                        )
-                ),
-                layer(
-                        x = met["improvDeclT"],
-                        y = met["improvDeclV"],
-                        Geom.point,
-                        style(
-                                point_size = 1.75mm,
-                                default_color = colorant"limegreen"
-                        )
-                ),
-                layer(
-                        x = met["budgetT"],
-                        y = met["budgetV"],
-                        Geom.point,
-                        style(
-                                point_size = 1.75mm,
-                                default_color = colorant"steelblue"
-                        )
-                ),
-                Guide.xlabel("Time since eruption (months)"),
-                Guide.ylabel(met["targetName"]),
-                Guide.manual_color_key("Legend",["delay","precondition","budget","improvement decline pt"],["fuchsia","coral","steelblue","limegreen"]), 
-                Theme(key_position = :inside)
-        ) 
-
-        p = vstack(p1,p2)
 end
-#
-using SQLite
-# Connect to Database
-db = SQLite.DB("D:/GEE_Project/Databases/database.db")
-anomalyM = DataFrame(SQLite.DBInterface.execute(db, "SELECT * FROM anomalyM"))
 
-met = anomMet(anomalyM,NaN, "LSSR.EVI.CDI",;uniqIdIdx = 60)
-met
 
-anomPlot2(met)
-#p = anomPlot(met)
 
-let 
-        
-end
+
+
+
 
 
 
