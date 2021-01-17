@@ -1,3 +1,6 @@
+# Big Earth Observational Data for Volcanic Impact Assessment
+![](images/dash-app.gif)
+
 # Impact Recovery Metrics
 ![](images/ImpactRecoveryMet_Jl.PNG)
 
