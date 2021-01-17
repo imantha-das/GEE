@@ -289,7 +289,7 @@ class ImpactRecoveryMetrics(object):
             return fig
 
         else:
-            Print("Empty target array")
+            print("Empty target array")
 
         
 
