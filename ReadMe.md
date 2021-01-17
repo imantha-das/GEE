@@ -2,7 +2,7 @@
 ![](images/dash-app.gif)
 
 ## Impact Recovery Metrics
-![](images/ImpactRecoveryMet_Jl.PNG)
+![](images/LSSR_NDVI_Pt.PNG)
 * Finds impact and recovery metrics by fitting a polynomial function to anomaly time series signal.
 
 ### ImpactRecoveryMetrics.py
