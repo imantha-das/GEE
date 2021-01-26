@@ -49,4 +49,8 @@
     * df::DataFrame - Dataframe returned from anomMet function
     * met::Dictionary - Metrics returned from the anomMet function
 
-## ClassifyCurves
+### ClassifyCurves
+* Classifies curves into 3 categories
+  * Class1 : Reached Precondtion stage
+  * Class2 : Havent reached precondition stage, mean(anomaly) < 0 (Degradation)
+  * Class3 : No recondtion stage, mean(anomaly) > 0 (Un-affected by eruption / improvement)
